@@ -1,0 +1,7 @@
+﻿指标,类型,相关系数_r,相关性p值,显著相关,LASSO选中,Logistic_p值,Logistic显著,AUC,ROC达标,RF排名前10,满足条件数
+LDL-C（低密度脂蛋白）,血常规,0.0165,0.6031,False,False,0.0000,True,0.631,True,True,3
+TC（总胆固醇）,血常规,-0.0418,0.1863,False,False,0.0000,True,0.8103,True,True,3
+TG（甘油三酯）,血常规,-0.0196,0.5363,False,False,0.0000,True,0.8482,True,True,3
+血尿酸,血常规,-0.0031,0.9225,False,False,0.0000,True,0.6455,True,True,3
+HDL-C（高密度脂蛋白）,血常规,0.0151,0.6330,False,False,0.0000,True,0.382,False,True,2
+ADL吃饭,活动量表,-0.0748,0.0180,False,True,0.9473,False,0.4985,False,True,2
