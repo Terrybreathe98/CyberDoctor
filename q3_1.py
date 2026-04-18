@@ -96,7 +96,7 @@ class InterventionConfig:
     }
 
     # 控制处理的患者数量
-    NUM_PATIENTS_TO_PROCESS = 5
+    NUM_PATIENTS_TO_PROCESS = 200
 
 # ==================== 数据处理 ====================
 def load_and_filter_data(data_path='data/data.pkl'):
