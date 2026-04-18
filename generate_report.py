@@ -2,6 +2,9 @@ import pandas as pd
 import os
 from datetime import datetime
 
+# 配置：展示的患者数量（None表示全部展示）
+NUM_PATIENTS_IN_REPORT = 5
+
 def generate_readable_report(csv_path='output/q3_1/干预方案结果.csv', 
                               output_dir='output/q3_1'):
     """将干预方案CSV转换为易读的Markdown报告"""
@@ -38,7 +41,17 @@ def generate_readable_report(csv_path='output/q3_1/干预方案结果.csv',
     # 标题
     md_content.append("# 痰湿体质患者个性化干预方案报告\n")
     md_content.append(f"**生成时间**: {datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}\n")
-    md_content.append(f"**患者数量**: {len(df)}人\n")
+    md_content.append(f"**总患者数量**: {len(df)}人\n")
+    
+    # 确定展示的患者数量
+    num_display = NUM_PATIENTS_IN_REPORT
+    if num_display is None or num_display > len(df):
+        num_display = len(df)
+        display_note = "全部"
+    else:
+        display_note = f"前{num_display}名"
+    
+    md_content.append(f"**详细方案展示**: {display_note}\n")
     md_content.append("---\n")
     
     # 总体统计
@@ -74,8 +87,12 @@ def generate_readable_report(csv_path='output/q3_1/干预方案结果.csv',
     
     # 逐个患者详细方案
     md_content.append("## 👥 患者个性化方案详情\n")
+    md_content.append(f"> 注：展示{display_note}患者的详细方案\n\n")
     
-    for idx, row in df.iterrows():
+    # 只展示指定数量的患者
+    df_display = df.head(num_display)
+    
+    for idx, row in df_display.iterrows():
         patient_id = int(row['patient_id'])
         age_group = age_group_map.get(int(row['age_group']), f"{int(row['age_group'])}组")
         

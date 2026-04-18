@@ -95,8 +95,11 @@ class InterventionConfig:
         (60, 100): [1, 2, 3]
     }
 
-    # 控制处理的患者数量
-    NUM_PATIENTS_TO_PROCESS = 200
+    # 控制处理的患者数量（None表示处理所有患者）
+    NUM_PATIENTS_TO_PROCESS = None
+    
+    # 控制报告中展示的详细方案数量
+    NUM_PATIENTS_IN_REPORT = 5
 
 # ==================== 数据处理 ====================
 def load_and_filter_data(data_path='data/data.pkl'):
@@ -687,10 +690,17 @@ def generate_summary_report(df_solutions, output_dir='output/q3_1'):
     """生成分析报告"""
     os.makedirs(output_dir, exist_ok=True)
     report_path = os.path.join(output_dir, '分析报告.md')
-
+    
     logger.info("\n" + "="*80)
     logger.info("生成分析报告")
     logger.info("="*80)
+    
+    # 确定展示的患者数量
+    num_display = InterventionConfig.NUM_PATIENTS_IN_REPORT
+    if num_display is None or num_display > len(df_solutions):
+        num_display = len(df_solutions)
+    
+    display_patients = df_solutions.head(num_display)
 
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write("# 痰湿体质患者6个月干预方案优化分析报告\n\n")
@@ -704,6 +714,7 @@ def generate_summary_report(df_solutions, output_dir='output/q3_1'):
         f.write("## 二、数据概况\n\n")
         f.write(f"- **研究对象**: 痰湿体质患者（体质标签=5）\n")
         f.write(f"- **样本数量**: {len(df_solutions)}人\n")
+        f.write(f"- **详细方案展示**: {num_display}人\n")
         f.write(f"- **平均年龄组**: {df_solutions['age_group'].mean():.1f}\n")
         f.write(f"- **平均活动评分**: {df_solutions['activity_score'].mean():.1f}\n")
         f.write(f"- **平均初始痰湿积分**: {df_solutions['initial_score'].mean():.1f}\n\n")
@@ -782,10 +793,10 @@ def generate_summary_report(df_solutions, output_dir='output/q3_1'):
             f.write(f"- 平均成本: {cluster_data['total_cost'].mean():.0f}元\n\n")
 
         f.write("## 六、个性化方案示例\n\n")
-        f.write("选取典型患者展示优化方案:\n\n")
-
-        # 展示前5个患者的方案
-        sample_patients = df_solutions.head(5)
+        f.write(f"选取前{num_display}名典型患者展示优化方案:\n\n")
+                
+        # 展示指定数量的患者方案
+        sample_patients = display_patients
         for _, patient in sample_patients.iterrows():
             f.write(f"### 患者ID: {int(patient['patient_id'])}\n\n")
             f.write(f"- **基本特征**:\n")
