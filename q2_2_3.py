@@ -302,7 +302,55 @@ def analyze_high_risk_patterns(X, y_binary, rf_model, all_features, img_dir, mod
             '生活方式': sum(abs(avg[all_features.index(f)]) for f in lifestyle_f if f in all_features)
         }
         
-        dom = max(contribs, key=contribs.get)
+        # 【改进1】计算各模块的特征数量
+        module_feat_counts = {
+            '血脂指标': len([f for f in lipid_f if f in all_features]),
+            '代谢指标': len([f for f in metab_f if f in all_features]),
+            '体质特征': len([f for f in const_f if f in all_features]),
+            '活动能力': len([f for f in activ_f if f in all_features]),
+            '生活方式': len([f for f in lifestyle_f if f in all_features])
+        }
+        
+        # 【改进2】计算标准化贡献度（平均每个特征的贡献）
+        normalized_contribs = {
+            mod: contribs[mod] / max(module_feat_counts[mod], 1) 
+            for mod in contribs.keys()
+        }
+        
+        # 【改进3】综合判断主导类型
+        # 策略1: 检查是否有模块的标准化贡献度显著突出（>1.5倍次高值）
+        sorted_norm = sorted(normalized_contribs.items(), key=lambda x: x[1], reverse=True)
+        max_norm_val = sorted_norm[0][1]
+        second_max_norm_val = sorted_norm[1][1] if len(sorted_norm) > 1 else 0
+        
+        if max_norm_val > second_max_norm_val * 1.5 and max_norm_val > 0.005:
+            # 有明显的主导模块（使用标准化贡献度）
+            dom = sorted_norm[0][0]
+        else:
+            # 策略2: 看Top 3特征的模块集中度
+            top3_feats = [f[0] for f in top5[:3]]
+            module_counts = {'血脂指标': 0, '代谢指标': 0, '体质特征': 0, '活动能力': 0, '生活方式': 0}
+            
+            for feat in top3_feats:
+                if feat in lipid_f:
+                    module_counts['血脂指标'] += 1
+                elif feat in metab_f:
+                    module_counts['代谢指标'] += 1
+                elif feat in const_f:
+                    module_counts['体质特征'] += 1
+                elif feat in activ_f:
+                    module_counts['活动能力'] += 1
+                elif feat in lifestyle_f:
+                    module_counts['生活方式'] += 1
+            
+            max_count = max(module_counts.values())
+            if max_count >= 2:
+                # Top 3中有至少2个来自同一模块
+                dom = max(module_counts, key=module_counts.get)
+            else:
+                # 策略3: 使用原始贡献度（保留原逻辑作为兜底）
+                dom = max(contribs, key=contribs.get)
+        
         pname_map = {
             '血脂指标': '血脂主导型',
             '代谢指标': '代谢主导型', 
@@ -318,11 +366,15 @@ def analyze_high_risk_patterns(X, y_binary, rf_model, all_features, img_dir, mod
             'sample_count': int(mask.sum()),
             'top5_features': top5, 
             'avg_shap': avg, 
-            'contributions': contribs, 
+            'contributions': contribs,
+            'normalized_contributions': normalized_contribs,  # 【新增】标准化贡献度
+            'module_feat_counts': module_feat_counts,  # 【新增】模块特征数
             'dominant_type': dom
         })
         
         print(f"\n  模式{cid+1}({pname}): {mask.sum()}人")
+        print(f"    模块特征数: {module_feat_counts}")
+        print(f"    标准化贡献度: {', '.join([f'{k}:{v:.4f}' for k, v in sorted(normalized_contribs.items(), key=lambda x: x[1], reverse=True)])}")
         print(f"    核心驱动特征:")
         for fn, sv in top5: 
             print(f"      - {fn}: {'↑' if sv>0 else '↓'} (SHAP={sv:+.3f})")
@@ -770,7 +822,9 @@ def generate_report(results, output_dir):
             
             f.write(f"\n**模块贡献分布**:\n")
             for mod_type, contribution in p['contributions'].items():
-                f.write(f"- {mod_type}: {contribution:.3f}\n")
+                norm_contrib = p.get('normalized_contributions', {}).get(mod_type, 0)
+                feat_count = p.get('module_feat_counts', {}).get(mod_type, 0)
+                f.write(f"- {mod_type}: 总贡献={contribution:.3f}, 平均贡献={norm_contrib:.4f} (特征数={feat_count})\n")
             f.write(f"\n**主导类型**: {p['dominant_type']}\n\n")
             f.write("---\n\n")
         
@@ -796,11 +850,52 @@ def generate_report(results, output_dir):
         f.write(f"   - 包括: {', '.join(pattern_types)}\n")
         f.write(f"   - 提示临床应采取**差异化干预策略**\n\n")
         
-        f.write("### 6.2 临床建议\n\n")
+        # 【新增】体质特征影响分析
+        if 'no_constitution' in results:
+            nc = results['no_constitution']
+            f.write("### 6.2 体质特征的影响分析\n\n")
+            f.write("**对比实验**: 排除所有体质特征后的模型表现\n\n")
+            f.write(f"| 指标 | 含体质特征 | 不含体质特征 | 变化 |\n")
+            f.write(f"|------|-----------|-------------|------|\n")
+            f.write(f"| 模型准确率 | {results['rf_accuracy']:.4f} | {nc['accuracy']:.4f} | {nc['accuracy_drop']:+.4f} |\n\n")
+            
+            f.write("**关键发现**:\n\n")
+            f.write(f"- 移除体质特征后，模型准确率**{'显著下降' if nc['accuracy_drop'] > 0.05 else '略有下降' if nc['accuracy_drop'] > 0.02 else '基本持平'}**\n")
+            f.write(f"- 这说明体质特征对痰湿质预测{'至关重要' if nc['accuracy_drop'] > 0.05 else '有重要贡献' if nc['accuracy_drop'] > 0.02 else '贡献有限'}\n\n")
+            
+            f.write("**不含体质时的主导模块**:\n\n")
+            nc_sorted = sorted(nc['module_analysis'].items(), key=lambda x: x[1]['total_contribution'], reverse=True)
+            for rank, (mod_name, mod_data) in enumerate(nc_sorted, 1):
+                f.write(f"{rank}. **{mod_name}** (贡献度: {mod_data['total_contribution']:.4f})\n")
+            f.write("\n")
+            
+            f.write("**不含体质时的Top 5特征**:\n\n")
+            f.write("| 排名 | 特征 | 重要性 |\n")
+            f.write("|------|------|--------|\n")
+            for rank, row in nc['top_features'].head(5).iterrows():
+                f.write(f"| {rank+1} | {row['特征']} | {row['重要性']:.4f} |\n")
+            f.write("\n")
+            
+            # 不含体质的模式多样性
+            nc_pattern_types = set([p['pattern_name'] for p in nc['cluster_patterns']])
+            f.write(f"**不含体质时的模式类型**: {', '.join(nc_pattern_types)}\n\n")
+            if len(nc_pattern_types) > len(pattern_types):
+                f.write("- 💡 **发现**: 排除体质后，识别出更多样化的模式类型\n")
+                f.write("- 这说明体质特征可能掩盖了其他模块的差异性\n\n")
+            elif len(nc_pattern_types) < len(pattern_types):
+                f.write("- 💡 **发现**: 排除体质后，模式类型减少\n")
+                f.write("- 这说明体质特征是区分不同亚型的关键因素\n\n")
+            else:
+                f.write("- 💡 **发现**: 排除体质后，模式类型数量不变但具体特征不同\n\n")
+        
+        f.write("### 6.3 临床建议\n\n")
         f.write("基于特征组合模式的发现，建议:\n\n")
         f.write("1. **分层筛查**: 优先关注{top_module[0]}异常的人群\n".format(top_module=top_module))
         f.write("2. **组合干预**: 对于存在强交互效应的特征对，应同时干预\n")
-        f.write("3. **个性化方案**: 根据不同高风险模式制定针对性干预措施\n\n")
+        f.write("3. **个性化方案**: 根据不同高风险模式制定针对性干预措施\n")
+        if 'no_constitution' in results and results['no_constitution']['accuracy_drop'] > 0.03:
+            f.write("4. **体质评估优先**: 体质特征是重要的预测因子，建议在筛查中优先考虑\n")
+        f.write("\n")
         f.write("---\n\n")
         f.write("*本报告由自动化分析流程生成*\n")
     
